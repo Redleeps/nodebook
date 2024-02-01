@@ -459,9 +459,9 @@ function displayDate(date: Date | string | number) {
     minute: "numeric"
   }).format(new Date(date))
 }
-function wait(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
+// function wait(ms: number) {
+//   return new Promise(resolve => setTimeout(resolve, ms))
+// }
 type types = {
   string: string,
   number: number,
