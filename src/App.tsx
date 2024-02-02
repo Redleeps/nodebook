@@ -340,7 +340,6 @@ import {
 import { ThemeProvider } from './components/theme-provider';
 import { Card, CardContent, CardFooter, CardHeader } from './components/ui/card';
 import { Button } from './components/ui/button';
-import { Textarea } from './components/ui/textarea';
 import { CircleDotDashed, Download, Hammer, Package, Upload, ChevronDown, X } from 'lucide-react';
 import { cn } from './lib/utils';
 import {
