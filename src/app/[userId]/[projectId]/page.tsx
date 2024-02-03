@@ -1,3 +1,4 @@
+"use client";
 /**
  * 
  * 
@@ -5,142 +6,15 @@
  * 
  * 
  */
-import * as React from 'react'
-interface ExecutionContext {
-  id: string;
-  name?: string;
-  displayedContent: string;
-  displayedHasTranspiled: boolean;
-  transpiledContent: string;
-  transpiledHasRan: boolean;
-  store?: Record<string, any>;
-  lastRun: {
-    date: Date;
-    duration: number;
-    result: string;
-  } | null;
-}
-interface Project {
-  name: string;
-  contexts: ExecutionContext[]
-  packages: {
-    name: string;
-    version: string;
-    entrypoints?: {
-      name: string;
-      value: string;
-    }[];
-    url: string;
-  }[]
-}
-const ProjectContext = React.createContext<{
-  project: Project,
-  updateProject: React.Dispatch<React.SetStateAction<Project>>
-} | null>(null);
-function useProject() {
-  return React.useContext(ProjectContext) ?? quit(`useProject must be used within a ProjectProvider`)
-}
-const emptyProject: Project = {
-  name: "My Project",
-  contexts: [],
-  packages: []
-}
-function ProjectProvider({ children }: { children: React.ReactNode }) {
-  const [project, updateProject] = React.useState<Project>()
-  React.useEffect(() => {
-    const storedProject = localStorage.getItem('project')
-    if (storedProject) {
-      const parsedProject = JSON.parse(storedProject) as Project
-      Promise.all(parsedProject.packages.map(async pkg => {
-        if (await hasPackage(pkg.name, pkg.version)) return
-        await addScript(pkg.name, pkg.version, pkg.url).catch(() => { })
-      })).then(() => {
-        updateProject(parsedProject)
-      })
-    }
-  }, [])
-  React.useEffect(() => {
-    if (!project) return
-    localStorage.setItem('project', JSON.stringify(project))
-  }, [project])
-  return (<>
-    <ProjectContext.Provider value={{
-      project: project ?? emptyProject,
-      updateProject: updateProject as React.Dispatch<React.SetStateAction<Project>>
-    }} children={children} />
-    <script type="importmap">
-      {JSON.stringify({
-        imports: project?.packages.reduce((imports, pkg) => {
-          // for (const { name, value } of pkg.entrypoints ?? []) {
-          //   imports[name] = value
-          // }
-          imports[pkg.name] = pkg.url
-          return imports
-        }, {} as Record<string, string>) ?? {}
-      }, null, 4)}
-    </script>
-  </>)
-}
-function useExecutionContext(id: string) {
-  const { project, updateProject } = useProject()
-  const context = findId(project.contexts, id) ?? quit(`Could not find context with id ${id}`)
-  const previousStore = {}
-  for (const context of project.contexts) {
-    if (hasId(context, id)) break
-    Object.assign(previousStore, context.store ?? {})
-  }
-  function updateContext(updatedContext: ExecutionContext | ((context: ExecutionContext) => ExecutionContext)) {
-    updateProject({
-      ...project,
-      contexts: project.contexts.map(context => {
-        if (!hasId(context, id)) return context
-        if (typeof updatedContext === "function")
-          return updatedContext(context)
-        return updatedContext
-      })
-    })
-  }
-  function removeContext() {
-    updateProject({
-      ...project,
-      contexts: project.contexts.filter(context => !hasId(context, id))
-    })
-  }
-  return { context, updateContext, removeContext, previousStore }
-}
-function usePackage(name: string) {
-  const { project, updateProject } = useProject()
-  const pkg = project.packages.find(pkg => pkg.name === name) ?? quit(`Could not find package with name ${name}`)
-  function updatePackage(updatedPackage: Project["packages"][0] | ((pkg: Project["packages"][0]) => Project["packages"][0])) {
-    updateProject({
-      ...project,
-      packages: project.packages.map(pkg => {
-        if (pkg.name !== name) return pkg
-        if (typeof updatedPackage === "function")
-          return updatedPackage(pkg)
-        return updatedPackage
-      })
-    })
-  }
-  function removePackage() {
-    updateProject({
-      ...project,
-      packages: project.packages.filter(pkg => pkg.name !== name)
-    })
-    requestAnimationFrame(() => {
-      window.location.reload()
-    })
-  }
-  return { pkg, updatePackage, removePackage }
-}
-
+import * as React from "react"
+import ReactDOM from "react-dom"
 /**
  * Runner functions
  */
 import ts from "typescript"
 import * as esprima from "esprima"
 const TS_HELPERS_END = '/* ------- ts helpers ends here ------- */\n'
-function transpile(source: string, previousStore: Record<string, any> = {}): string {
+function transpile(source: string, previousStore: Record<string, unknown> = {}): string {
   console.log('transpile', previousStore)
   const oldStoreKeys = Object.keys(previousStore).map(key => `var ${key};`).join('\n')
   const output = ts.transpile(`
@@ -162,28 +36,17 @@ function transpile(source: string, previousStore: Record<string, any> = {}): str
   })
   return output.split(oldStoreKeys).join('')
 }
-declare global {
-  interface Window {
-    nodebook_logs: any[]
-  }
-}
-window.nodebook_logs ??= (() => {
-  const a = [] as any[]
-  a.push = function (...args) {
-    console.log(...args)
-    return Array.prototype.push.apply(this, args)
-  }
-  return a
-})()
+
+
 const AsyncFunction = async function () { }.constructor;
-async function runTranspiled(source: string, previousStore: Record<string, any> = {}, packages: Project["packages"] = []) {
+async function runTranspiled(source: string, previousStore: Record<string, unknown> = {}, packages: Project["packages"] = []) {
   console.log(source)
   const textToAnalyse = "(async function() {\n" + source.slice(Math.max(0, source.indexOf(TS_HELPERS_END) + TS_HELPERS_END.length)) + "})"
   console.log(textToAnalyse)
   const analysis = (esprima.parseScript(textToAnalyse, {
     tolerant: true,
     loc: true,
-  }).body[0] as any).expression.body as ReturnType<typeof esprima.parseScript>
+  }).body[0] as unknown as { expression: { body: ReturnType<typeof esprima.parseScript> } }).expression.body
   console.log({ analysis, source })
   const variables = analysis.body.filter(node => ['FunctionDeclaration', 'VariableDeclaration', 'VariableDeclarator'].includes(node.type))
   console.log({ variables })
@@ -241,7 +104,7 @@ async function runTranspiled(source: string, previousStore: Record<string, any> 
 
   let updatedSource = source
   const evictedChars = Math.max(0, source.indexOf(TS_HELPERS_END) + TS_HELPERS_END.length)
-  let updatedSourceLines = ('\n' + source.slice(evictedChars)).split('\n')
+  const updatedSourceLines = ('\n' + source.slice(evictedChars)).split('\n')
   function getIndexFromLoc(lines: string[], loc: { line: number, column: number }) {
     let store = 0
     for (let i = 0; i < loc.line - 1; i++) {
@@ -275,7 +138,7 @@ async function runTranspiled(source: string, previousStore: Record<string, any> 
     })()
   `)
   console.log("running function")
-  const newStore: Record<string, any> = {}
+  const newStore: Record<string, unknown> = {}
   const duration: number = await fn(newStore, {}, {}, ...Object.values(previousStore))
   console.log("function ran")
   const runLogs = window.nodebook_logs.splice(0)
@@ -284,7 +147,7 @@ async function runTranspiled(source: string, previousStore: Record<string, any> 
       console.log({ log })
       if (is(log, 'undefined') || is(log, 'null')) return ""
       if (is(log, 'object') && log?.constructor?.name === 'Object') return JSON.stringify(log, null, 2).split('\n')
-      return log.toString?.().split('\n') ?? []
+      return (log as object).toString?.().split('\n') ?? []
     } catch (error) {
       console.error(`Error while parsing log: ${log}`)
       return []
@@ -298,23 +161,6 @@ async function runTranspiled(source: string, previousStore: Record<string, any> 
     newStore,
     duration
   }
-}
-function getScriptId(name: string, version: string) {
-  return `nodebook-package-${name}@${version}`
-}
-async function hasPackage(name: string, version: string) {
-  const script = document.getElementById(getScriptId(name, version))
-  return !!script
-}
-async function addScript(name: string, version: string, url: string) {
-  const scriptId = getScriptId(name, version)
-  const link = document.createElement('link')
-  link.id = scriptId
-  link.href = url
-  link.as = 'script'
-  link.rel = 'preload'
-  document.head.appendChild(link)
-  return true
 }
 
 /**
@@ -331,17 +177,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Input } from './components/ui/input';
+import { Input } from '@/components/ui/input';
 import {
   QueryClient,
   QueryClientProvider,
   useQuery,
 } from '@tanstack/react-query'
-import { ThemeProvider } from './components/theme-provider';
-import { Card, CardContent, CardFooter, CardHeader } from './components/ui/card';
-import { Button } from './components/ui/button';
+import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { CircleDotDashed, Download, Hammer, Package, Upload, ChevronDown, X } from 'lucide-react';
-import { cn } from './lib/utils';
+import { cn, displayDate, is, wait } from '@/lib/utils';
 import {
   Sheet,
   SheetContent,
@@ -362,7 +207,9 @@ import {
   CommandInput,
   CommandItem,
 } from "@/components/ui/command"
-import { Popover, PopoverContent, PopoverTrigger } from './components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ExecutionContext, Project, addScript, hasPackage, useExecutionContext, usePackage, useProject } from "@/contexts/project";
+import Title from "@/components/system/title";
 function PackageManagerItem({ name }: Pick<Project["packages"][0], "name">) {
   const { pkg, removePackage } = usePackage(name);
   const [displayedUrl, setDisplayedUrl] = React.useState(pkg.url)
@@ -417,7 +264,7 @@ function AddPackageButton() {
   }, [input])
   const packages = useQuery({
     queryKey: ['packages', packageName],
-    async queryFn({ queryKey: [_, search] }) {
+    async queryFn({ queryKey: [, search] }) {
       const response = await fetch(`https://data.jsdelivr.com/v1/packages/npm/${search}`)
       const data = await response.json() as PackageQueryResult
       if (data.type !== 'npm') return null
@@ -435,7 +282,7 @@ function AddPackageButton() {
       await Promise.all(entrypoints.map(([name, version, url]) => addScript(name, version, url).catch(() => { })))
       updateProject({
         ...project,
-        packages: [...project.packages, { name, version, url, entrypoints: entrypoints.map(([name, _version, value]) => ({ name, value })) }]
+        packages: [...project.packages, { name, version, url, entrypoints: entrypoints.map(([name, , value]) => ({ name, value })) }]
       })
       setOpen(false)
     }
@@ -471,7 +318,7 @@ function AddPackageButton() {
                 <Input type="text" placeholder="Package name" className='mb-2' value={input} onInput={updateInput} />
               </PopoverTrigger>
               <PopoverContent className="w-[200px] p-0" align="start">
-                {!!deferredPackages?.versions ? (
+                {deferredPackages?.versions ? (
                   <Command>
                     <CommandInput placeholder="Search version..." />
                     <CommandEmpty>No version found.</CommandEmpty>
@@ -554,27 +401,27 @@ function Header() {
       }))
     })], { type: 'application/json' })
     a.href = URL.createObjectURL(file)
-    a.download = `${project.name}.json`
+    a.download = `${"project.name"}.json`
     a.click()
   }
   function renameProject(event: React.ChangeEvent<HTMLInputElement>) {
-    updateProject({
-      ...project,
-      name: event.target.value
-    })
+    console.log("rename project", event.target.value)
   }
   return (
-    <div className='w-full border-b border-border'>
-      <div className='py-6 mx-auto max-w-4xl px-5 flex justify-between items-center gap-5'>
-        <Input
-          type="text"
-          autoComplete='off'
-          onChange={renameProject}
-          value={project.name}
-          placeholder='Project name'
-          className='max-w-xs border-none'
-        />
-        <div className="grid grid-cols-3 gap-4">
+    <div className='w-full'>
+      <div className='py-6 px-5 flex justify-between items-center gap-5 shrink-0'>
+        <div className="flex items-center">
+          <Title variant="h5">/</Title>
+          <Input
+            type="text"
+            autoComplete='off'
+            onChange={renameProject}
+            value={"project.name"}
+            placeholder='Project name'
+            className='max-w-xs border-none shrink-0 ml-3'
+          />
+        </div>
+        <div className="grid grid-cols-3 gap-4 shrink-0">
           <PackageManager />
           <Button onClick={importProject} size="icon-sm">
             <Upload size={16} />
@@ -613,7 +460,7 @@ function ExecutionContextItem({ id }: Pick<ExecutionContext, "id">) {
     opts.moduleResolution = 2
     opts.allowJs = true
     opts.module = 99
-    
+
     monaco.languages.typescript.typescriptDefaults.setCompilerOptions(opts)
   }, [monaco])
   React.useEffect(() => {
@@ -825,82 +672,40 @@ function ExecutionContextList() {
   )
 
 }
-const queryClient = new QueryClient()
+
 function App() {
+  const { project } = useProject()
+  const [queryClient] = React.useState(() => new QueryClient())
+  React.useEffect(() => {
+    window.nodebook_logs ??= (() => {
+      const a = [] as unknown[]
+      a.push = function (...args) {
+        console.log(...args)
+        return Array.prototype.push.apply(this, args)
+      }
+      return a
+    })()
+  }, [])
+  const HeaderPortal = React.useCallback(() => {
+    if (!("window" in globalThis)) return <></>
+    const element = document.querySelector('header #actions')
+    if (!element) return <></>
+    return ReactDOM.createPortal(<Header />, element)
+  }, [project])
   return (
-    <ThemeProvider defaultTheme='dark' storageKey="vite-ui-theme">
-      <QueryClientProvider client={queryClient}>
-        <ProjectProvider>
-          <div className="w-screen min-h-screen ">
-            <Header />
-            <div className='w-screen max-w-4xl mx-auto mt-4 px-5'>
-              <ExecutionContextList />
-            </div>
-          </div>
-        </ProjectProvider>
-      </QueryClientProvider>
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <HeaderPortal />
+      <div className='w-screen max-w-4xl mx-auto mt-4 px-5'>
+        <ExecutionContextList />
+      </div>
+    </QueryClientProvider>
   )
 }
 
 export default App
 
-
-/**
- * 
- * 
- * 
- * Utils
- * 
- * 
- * 
- */
-function quit(message?: string): never {
-  if (message) {
-    console.log(`Quit: ${message}`)
+declare global {
+  interface Window {
+    nodebook_logs: unknown[];
   }
-  throw new Error(message)
-}
-function hasId<T extends { id: string }>(item: T, id: string): boolean {
-  return item.id === id
-}
-function findId<T extends { id: string }>(array: T[], id: string): T | undefined {
-  return array.find(item => hasId(item, id))
-}
-function displayDate(date: Date | string | number) {
-  return Intl.DateTimeFormat("en-US", {
-    weekday: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "numeric"
-  }).format(new Date(date))
-}
-function wait(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
-type types = {
-  string: string,
-  number: number,
-  boolean: boolean,
-  object: object,
-  function: Function,
-  symbol: symbol,
-  bigint: bigint,
-  undefined: undefined,
-  null: null,
-}
-const typeStrings = {
-  string: "string",
-  number: "number",
-  boolean: "boolean",
-  object: "object",
-  function: "function",
-  symbol: "symbol",
-  bigint: "bigint",
-  undefined: "undefined",
-  null: "object",
-} as const
-function is<T extends keyof types>(value: unknown, type: T): value is types[T] {
-  if (type === 'null') return value === null
-  return typeof value === typeStrings[type]
 }
