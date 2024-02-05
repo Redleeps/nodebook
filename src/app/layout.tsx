@@ -17,7 +17,7 @@ export default async function RootLayout({
                 <html lang="en">
                     <body className='bg-background'>
                         <main className="w-screen max-w-7xl mx-auto pt-24">
-                            <header className="h-20 w-screen fixed top-0 left-0 shadow-sm shadow-muted">
+                            <header className="h-20 w-screen fixed top-0 left-0 shadow-sm shadow-muted px-5">
                                 <div className="w-screen max-w-7xl mx-auto h-full flex items-center">
                                     <Title variant="h3">
                                         <Link href="/">Nodebook</Link>
